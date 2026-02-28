@@ -2,6 +2,8 @@
 
 Production-grade internal developer copilot with org-wide context, temporal awareness, and large context reasoning.
 
+![Web UI](https://github.com/user-attachments/assets/270dd3d6-84c8-4bd0-9a0b-88631675fe3b)
+
 ## What It Does
 
 An internal engineering assistant that understands the **entire engineering org** — not just code, but decisions, history, context, and reasoning. A developer asks it anything and gets an answer grounded in *how the company actually works*.
@@ -70,17 +72,19 @@ pytest tests/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check with chunk count |
 | `POST` | `/ask` | Ask a question (supports streaming) |
 | `POST` | `/ingest/github` | Ingest a GitHub repository |
 | `POST` | `/webhook/github` | GitHub webhook receiver |
 | `GET` | `/audit` | View audit log |
+| `GET` | `/` | Web UI |
 
 ### Example: Ask a Question
 
 ```bash
 curl -X POST http://localhost:8000/ask \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '{"query": "Why does the payments service have its own user table?", "user_id": "alice"}'
 ```
 
@@ -94,24 +98,28 @@ docker compose up --build
 
 ```
 src/
-├── config/           # Application settings (env-based)
-├── models/           # Pydantic schemas shared across layers
-├── ingestion/        # Data source connectors (GitHub, Slack)
-├── processing/       # Semantic chunking, temporal tagging
+├── config/           # Settings (env-based) + resilience utilities (retry, backoff)
+├── models/           # Pydantic schemas, SQLAlchemy models, thread-safe repository
+├── ingestion/        # Data source connectors (GitHub, Slack) with retry + pagination
+├── processing/       # Semantic chunking, temporal tagging, entity linker
 ├── context_assembly/ # Query classification, retrieval planning, token budgeting
 ├── reasoning/        # LLM integration, citations, confidence scoring
-├── interfaces/       # FastAPI REST API
+├── interfaces/       # FastAPI REST API + Web UI + middleware (auth, rate limit)
 └── security/         # Permission filtering, audit logging, webhook verification
 tests/
-├── unit/             # Unit tests for each layer
+├── unit/             # 106 unit tests covering all layers
 └── integration/      # Integration tests (requires services)
 ```
 
 ## Security
 
+- **API key authentication** — configurable API keys via middleware; public endpoints (health, docs) skip auth
+- **Rate limiting** — per-IP sliding window rate limiter
 - **Permission filtering** — chunks carry source permissions; retrieval filters by user access
-- **Audit logging** — every query, retrieval, and response is logged
-- **Webhook verification** — GitHub and Slack signatures are validated
+- **Audit logging** — every query, retrieval, and response is logged with timestamps
+- **Webhook verification** — GitHub (HMAC-SHA256) and Slack (with replay protection) signatures validated
+- **Input validation** — size limits, format validation, and Pydantic constraints at all boundaries
+- **Request logging** — correlation IDs for distributed tracing
 - **Data isolation** — designed for per-tenant Qdrant collections and Neo4j databases
 
 ## Tech Stack
