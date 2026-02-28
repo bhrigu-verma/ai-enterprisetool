@@ -107,9 +107,10 @@ class TestRateLimiterCleanup:
         """Rate limiter should clean up stale IP entries to prevent memory leak."""
         from src.interfaces.middleware import _RateLimitBucket
 
-        bucket = _RateLimitBucket(max_requests=100, window_seconds=1)
-        # Fill with many unique keys
-        for i in range(10_001):
+        bucket = _RateLimitBucket(max_requests=100, window_seconds=0)
+        # Fill with many unique keys — all will be immediately stale (window=0)
+        for i in range(10_002):
             bucket.is_allowed(f"ip-{i}")
-        # After exceeding 10k keys, stale entries should be cleaned
-        assert len(bucket._requests) <= 10_001
+        # After exceeding 10k keys, stale entries should be cleaned up
+        # The last key stays, but stale ones are removed
+        assert len(bucket._requests) < 10_000

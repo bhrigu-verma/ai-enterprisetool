@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     rate_limit_burst: int = 10
 
     # --- CORS ---
+    # Default ["*"] allows all origins (dev-friendly). In production,
+    # set AET_CORS_ALLOWED_ORIGINS='["https://your-domain.com"]'
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: ["*"],
     )
