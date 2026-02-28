@@ -1,7 +1,18 @@
-"""Semantic chunking — splits content by meaningful boundaries, not character count."""
+"""Semantic chunking — splits content by meaningful boundaries, not character count.
+
+Rules:
+- PRs: title+description as one chunk, each review comment as a separate chunk
+- Commits: one chunk per commit
+- Slack: keep the full thread as one chunk (never split threads)
+- Tickets: keep the whole ticket as one chunk
+- Documents: split by H2/H3 headings
+
+Every chunk gets rich metadata for downstream filtering and ranking.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -16,9 +27,18 @@ from src.models.schemas import (
     TicketData,
 )
 
+logger = logging.getLogger(__name__)
+
+# Maximum content size per chunk (characters).  Prevents memory
+# exhaustion from unexpectedly large inputs.
+_MAX_CHUNK_CHARS = 500_000
+
 
 class SemanticChunker:
     """Produces richly annotated :class:`Chunk` objects from ingested data."""
+
+    def __init__(self, *, max_chunk_chars: int = _MAX_CHUNK_CHARS) -> None:
+        self._max_chars = max_chunk_chars
 
     # ------------------------------------------------------------------
     # PR chunking
@@ -34,7 +54,7 @@ class SemanticChunker:
             chunks.append(
                 Chunk(
                     id=_uid(),
-                    content=body,
+                    content=self._truncate(body),
                     metadata=ChunkMetadata(
                         source_type=SourceType.PR_DESCRIPTION,
                         source_id=f"PR-{pr.pr_id}",
@@ -54,7 +74,7 @@ class SemanticChunker:
             chunks.append(
                 Chunk(
                     id=_uid(),
-                    content=comment,
+                    content=self._truncate(comment),
                     metadata=ChunkMetadata(
                         source_type=SourceType.PR_COMMENT,
                         source_id=f"PR-{pr.pr_id}-comment-{idx}",
@@ -79,7 +99,7 @@ class SemanticChunker:
         return [
             Chunk(
                 id=_uid(),
-                content=content,
+                content=self._truncate(content),
                 metadata=ChunkMetadata(
                     source_type=SourceType.COMMIT,
                     source_id=commit.sha,
@@ -102,7 +122,7 @@ class SemanticChunker:
         return [
             Chunk(
                 id=_uid(),
-                content=content,
+                content=self._truncate(content),
                 metadata=ChunkMetadata(
                     source_type=SourceType.SLACK_THREAD,
                     source_id=thread.thread_id,
@@ -123,7 +143,7 @@ class SemanticChunker:
         return [
             Chunk(
                 id=_uid(),
-                content=content,
+                content=self._truncate(content),
                 metadata=ChunkMetadata(
                     source_type=SourceType.TICKET,
                     source_id=ticket.ticket_id,
@@ -150,14 +170,16 @@ class SemanticChunker:
         timestamp: datetime | None = None,
     ) -> list[Chunk]:
         """Split a Markdown/text document by section headings."""
+        if not text or not text.strip():
+            return []
         sections = _split_by_headings(text)
         return [
             Chunk(
                 id=_uid(),
-                content=section,
+                content=self._truncate(section),
                 metadata=ChunkMetadata(
                     source_type=SourceType.DOCUMENT,
-                    source_id=doc_id,
+                    source_id=doc_id or _uid(),
                     author=author,
                     timestamp=timestamp,
                     age_days=_age_days(timestamp),
@@ -167,6 +189,19 @@ class SemanticChunker:
             for section in sections
             if section.strip()
         ]
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _truncate(self, text: str) -> str:
+        """Truncate content to ``_max_chars`` to prevent memory issues."""
+        if len(text) > self._max_chars:
+            logger.warning(
+                "Truncating chunk content from %d to %d chars", len(text), self._max_chars
+            )
+            return text[: self._max_chars] + "\n[...truncated]"
+        return text
 
 
 # ---------------------------------------------------------------------------

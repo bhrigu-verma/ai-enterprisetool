@@ -1,9 +1,14 @@
-"""Domain models shared across all layers."""
+"""Domain models shared across all layers.
+
+All models use Pydantic v2 with strict validation.  Fields that carry
+user-supplied data have length / range constraints so that malformed
+input is rejected at the boundary.
+"""
 
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
@@ -39,12 +44,12 @@ class ChunkMetadata(BaseModel):
     """Rich metadata attached to every ingested chunk."""
 
     source_type: SourceType
-    source_id: str
-    author: str = ""
+    source_id: str = Field(..., min_length=1, max_length=512)
+    author: str = Field(default="", max_length=256)
     timestamp: datetime | None = None
-    age_days: int = 0
+    age_days: int = Field(default=0, ge=0)
     linked_entities: list[str] = Field(default_factory=list)
-    repo: str = ""
+    repo: str = Field(default="", max_length=256)
     tags: list[str] = Field(default_factory=list)
     is_likely_outdated: bool = False
     permissions: list[str] = Field(default_factory=list)
@@ -53,11 +58,11 @@ class ChunkMetadata(BaseModel):
 class Chunk(BaseModel):
     """A semantically meaningful unit of ingested content."""
 
-    id: str
-    content: str
+    id: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1)
     metadata: ChunkMetadata
     embedding: list[float] | None = None
-    staleness_score: float = 0.0
+    staleness_score: float = Field(default=0.0, ge=0.0, le=1.0)
     staleness_reason: str = ""
 
 
@@ -68,8 +73,8 @@ class Chunk(BaseModel):
 class PRData(BaseModel):
     """Normalised pull request data from any SCM provider."""
 
-    pr_id: str
-    repo: str
+    pr_id: str = Field(..., min_length=1)
+    repo: str = Field(..., min_length=1)
     title: str
     description: str = ""
     author: str = ""
@@ -83,8 +88,8 @@ class PRData(BaseModel):
 class CommitData(BaseModel):
     """Normalised commit data."""
 
-    sha: str
-    repo: str
+    sha: str = Field(..., min_length=1)
+    repo: str = Field(..., min_length=1)
     message: str
     author: str = ""
     timestamp: datetime | None = None
@@ -94,7 +99,7 @@ class CommitData(BaseModel):
 class TicketData(BaseModel):
     """Normalised ticket data from Jira / Linear."""
 
-    ticket_id: str
+    ticket_id: str = Field(..., min_length=1)
     title: str
     description: str = ""
     status: str = ""
@@ -107,8 +112,8 @@ class TicketData(BaseModel):
 class SlackThread(BaseModel):
     """Normalised Slack thread."""
 
-    thread_id: str
-    channel: str
+    thread_id: str = Field(..., min_length=1)
+    channel: str = Field(..., min_length=1)
     messages: list[str] = Field(default_factory=list)
     participants: list[str] = Field(default_factory=list)
     timestamp: datetime | None = None
@@ -143,7 +148,7 @@ class QueryResponse(BaseModel):
 
     answer: str
     citations: list[SourceCitation] = Field(default_factory=list)
-    confidence: float = 0.0
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     staleness_warnings: list[str] = Field(default_factory=list)
     model_used: str = ""
 
@@ -155,8 +160,8 @@ class QueryResponse(BaseModel):
 class AuditEntry(BaseModel):
     """Immutable audit log entry."""
 
-    user_id: str
+    user_id: str = Field(..., min_length=1)
     query: str
     response_summary: str = ""
     chunks_retrieved: list[str] = Field(default_factory=list)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

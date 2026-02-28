@@ -1,8 +1,15 @@
-"""Reasoning layer — LLM integration with streaming, citations, and confidence scoring."""
+"""Reasoning layer — LLM integration with streaming, citations, and confidence scoring.
+
+Production-grade features:
+- Model routing: complex questions → Opus, simple → Sonnet
+- Configurable max_tokens and timeout
+- Streaming with error handling
+- Source citations extracted from assembled chunks
+- Confidence scoring based on chunk quality and diversity
+"""
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
@@ -67,7 +74,8 @@ def select_model(question_type: QuestionType) -> str:
 # Context formatting
 # ---------------------------------------------------------------------------
 
-def _format_context(chunks: list[Chunk]) -> str:
+def format_context(chunks: list[Chunk]) -> str:
+    """Format chunks into a structured context block for the LLM."""
     parts: list[str] = []
     for i, chunk in enumerate(chunks, 1):
         meta = chunk.metadata
@@ -85,7 +93,8 @@ def _format_context(chunks: list[Chunk]) -> str:
 # Citation extraction
 # ---------------------------------------------------------------------------
 
-def _extract_citations(chunks: list[Chunk]) -> list[SourceCitation]:
+def extract_citations(chunks: list[Chunk]) -> list[SourceCitation]:
+    """Deduplicate and return citations from the assembled chunks."""
     seen: set[str] = set()
     citations: list[SourceCitation] = []
     for chunk in chunks:
@@ -107,8 +116,8 @@ def _extract_citations(chunks: list[Chunk]) -> list[SourceCitation]:
 # Confidence scoring
 # ---------------------------------------------------------------------------
 
-def _compute_confidence(chunks: list[Chunk]) -> float:
-    """Heuristic confidence score based on chunk quality."""
+def compute_confidence(chunks: list[Chunk]) -> float:
+    """Heuristic confidence score based on chunk quality and source diversity."""
     if not chunks:
         return 0.0
     avg_staleness = sum(c.staleness_score for c in chunks) / len(chunks)
@@ -131,7 +140,16 @@ class ReasoningEngine:
         if self._client is None:
             import anthropic
 
-            self._client = anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key)
+            settings = get_settings()
+            if not settings.anthropic_api_key:
+                raise RuntimeError(
+                    "Anthropic API key is not configured. "
+                    "Set the AET_ANTHROPIC_API_KEY environment variable."
+                )
+            self._client = anthropic.AsyncAnthropic(
+                api_key=settings.anthropic_api_key,
+                timeout=settings.llm_timeout_seconds,
+            )
         return self._client
 
     async def answer(
@@ -141,19 +159,26 @@ class ReasoningEngine:
         question_type: QuestionType = QuestionType.GENERAL,
     ) -> QueryResponse:
         """Generate a complete (non-streamed) response."""
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty")
+
+        settings = get_settings()
         model = select_model(question_type)
         system = _build_system_prompt()
-        context = _format_context(chunks)
+        context = format_context(chunks)
         user_message = f"Context:\n{context}\n\nQuestion: {query}"
 
         client = self._get_client()
         message = await client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=settings.llm_max_output_tokens,
             system=system,
             messages=[{"role": "user", "content": user_message}],
         )
-        answer_text = message.content[0].text
+
+        answer_text = ""
+        if message.content:
+            answer_text = message.content[0].text
 
         staleness_warnings = [
             f"{c.metadata.source_id}: {c.staleness_reason}"
@@ -163,8 +188,8 @@ class ReasoningEngine:
 
         return QueryResponse(
             answer=answer_text,
-            citations=_extract_citations(chunks),
-            confidence=_compute_confidence(chunks),
+            citations=extract_citations(chunks),
+            confidence=compute_confidence(chunks),
             staleness_warnings=staleness_warnings,
             model_used=model,
         )
@@ -175,18 +200,29 @@ class ReasoningEngine:
         chunks: list[Chunk],
         question_type: QuestionType = QuestionType.GENERAL,
     ) -> AsyncIterator[str]:
-        """Yield streamed text tokens from the LLM."""
+        """Yield streamed text tokens from the LLM.
+
+        Handles mid-stream errors gracefully by logging and stopping the stream.
+        """
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty")
+
+        settings = get_settings()
         model = select_model(question_type)
         system = _build_system_prompt()
-        context = _format_context(chunks)
+        context = format_context(chunks)
         user_message = f"Context:\n{context}\n\nQuestion: {query}"
 
         client = self._get_client()
-        async with client.messages.stream(
-            model=model,
-            max_tokens=4096,
-            system=system,
-            messages=[{"role": "user", "content": user_message}],
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+        try:
+            async with client.messages.stream(
+                model=model,
+                max_tokens=settings.llm_max_output_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user_message}],
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
+        except Exception:
+            logger.exception("Streaming error during LLM call")
+            yield "\n\n[Error: streaming interrupted. Please try again.]"

@@ -1,15 +1,55 @@
-"""Context assembly engine — query classification, retrieval planning, and token budget management."""
+"""Context assembly engine — query classification, retrieval planning, and token budget management.
+
+This is the hardest engineering problem and the core of the product.
+The naive approach (embed query → top-K chunks → stuff into context) fails
+for complex questions.  Instead we:
+
+1. Classify the question type (why / how / who / incident / general)
+2. Build a retrieval plan that targets the right source types
+3. Filter and rank candidates by recency + staleness
+4. Fit into the token budget, preferring full documents over snippets
+"""
 
 from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+
+import tiktoken
 
 from src.config.settings import get_settings
 from src.models.schemas import Chunk, QuestionType, RetrievalPlan, SourceType
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Token counting (using tiktoken for accuracy)
+# ---------------------------------------------------------------------------
+
+_tokenizer: tiktoken.Encoding | None = None
+
+
+def _get_tokenizer() -> tiktoken.Encoding:
+    global _tokenizer
+    if _tokenizer is None:
+        _tokenizer = tiktoken.get_encoding("cl100k_base")
+    return _tokenizer
+
+
+def count_tokens(text: str) -> int:
+    """Count the number of tokens in *text*.
+
+    Uses tiktoken when available; falls back to a character-based estimate
+    (~4 characters per token) when the tokenizer cannot be loaded.
+    """
+    if not text:
+        return 0
+    try:
+        return len(_get_tokenizer().encode(text))
+    except Exception:
+        # Fallback: ~4 characters per token for English text
+        return max(1, len(text) // 4)
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +63,13 @@ _INCIDENT_PATTERNS = re.compile(r"\b(broke|incident|outage|down|error|failure|bu
 
 
 def classify_question(query: str) -> QuestionType:
-    """Classify a natural-language query into a *QuestionType*."""
+    """Classify a natural-language query into a *QuestionType*.
+
+    Raises *ValueError* if the query is empty.
+    """
+    if not query or not query.strip():
+        raise ValueError("Query must not be empty")
+
     if _WHY_PATTERNS.search(query):
         return QuestionType.WHY
     if _HOW_PATTERNS.search(query):
@@ -90,7 +136,17 @@ class ContextAssembler:
         self._token_budget = token_budget or get_settings().max_context_tokens
 
     def assemble(self, query: str, candidate_chunks: list[Chunk]) -> list[Chunk]:
-        """Return the best-fit set of chunks for *query* within the token budget."""
+        """Return the best-fit set of chunks for *query* within the token budget.
+
+        Steps:
+        1. Classify the question
+        2. Filter by source type based on the retrieval plan
+        3. Rank by staleness (freshest first)
+        4. Greedily fill the token budget
+        """
+        if not candidate_chunks:
+            return []
+
         question_type = classify_question(query)
         plan = plan_retrieval(query, question_type)
         filtered = self._apply_source_filter(candidate_chunks, plan)
@@ -110,10 +166,9 @@ class ContextAssembler:
 
     @staticmethod
     def _rank(chunks: list[Chunk], question_type: QuestionType) -> list[Chunk]:
-        """Sort chunks by relevance heuristic: recency first, then staleness."""
+        """Sort chunks by relevance heuristic: lower staleness + newer is better."""
 
         def _sort_key(c: Chunk) -> tuple[float, int]:
-            # Lower staleness is better, more recent is better (higher age_days = worse)
             return (c.staleness_score, c.metadata.age_days)
 
         return sorted(chunks, key=_sort_key)
@@ -123,18 +178,10 @@ class ContextAssembler:
         selected: list[Chunk] = []
         used = 0
         for chunk in chunks:
-            tokens = _estimate_tokens(chunk.content)
+            tokens = count_tokens(chunk.content)
             if used + tokens > self._token_budget:
                 break
             selected.append(chunk)
             used += tokens
+        logger.debug("Assembled %d chunks using %d tokens (budget: %d)", len(selected), used, self._token_budget)
         return selected
-
-
-# ---------------------------------------------------------------------------
-# Token estimation
-# ---------------------------------------------------------------------------
-
-def _estimate_tokens(text: str) -> int:
-    """Rough estimate: ~4 characters per token for English text."""
-    return max(1, len(text) // 4)

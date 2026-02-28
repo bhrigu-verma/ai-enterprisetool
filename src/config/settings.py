@@ -1,8 +1,13 @@
-"""Application settings loaded from environment variables."""
+"""Application settings loaded from environment variables.
+
+Every setting is validated at startup.  Missing *required* values in
+non-debug mode cause a clear, immediate error instead of cryptic
+failures at runtime.
+"""
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -16,11 +21,16 @@ class Settings(BaseSettings):
     company_name: str = "Acme Corp"
     debug: bool = False
 
+    # --- API Authentication ---
+    api_keys: list[str] = Field(default_factory=list)
+
     # --- Anthropic ---
     anthropic_api_key: str = ""
     opus_model: str = "claude-sonnet-4-20250514"
     sonnet_model: str = "claude-sonnet-4-20250514"
     max_context_tokens: int = 150_000
+    llm_max_output_tokens: int = 4096
+    llm_timeout_seconds: int = 120
 
     # --- GitHub ---
     github_token: str = ""
@@ -50,6 +60,37 @@ class Settings(BaseSettings):
     # --- Staleness ---
     staleness_threshold_days: int = 540  # 18 months
 
+    # --- Rate Limiting ---
+    rate_limit_per_minute: int = 60
+    rate_limit_burst: int = 10
+
+    # --- Request Limits ---
+    max_query_length: int = 10_000
+    max_ingest_batch_size: int = 100
+
+    # --- Validators ---
+
+    @field_validator("max_context_tokens", "llm_max_output_tokens", "llm_timeout_seconds")
+    @classmethod
+    def _positive_int(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("Value must be positive")
+        return v
+
+    @field_validator("staleness_threshold_days")
+    @classmethod
+    def _non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Value must be non-negative")
+        return v
+
+    @field_validator("rate_limit_per_minute", "rate_limit_burst")
+    @classmethod
+    def _rate_limit_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("Rate limit values must be positive")
+        return v
+
 
 _settings: Settings | None = None
 
@@ -60,3 +101,9 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+def reset_settings() -> None:
+    """Reset settings singleton (used in tests)."""
+    global _settings  # noqa: PLW0603
+    _settings = None

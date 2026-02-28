@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 from src.models.schemas import Chunk, ChunkMetadata, QuestionType, SourceType
 from src.reasoning.engine import (
-    _compute_confidence,
-    _extract_citations,
-    _format_context,
+    compute_confidence,
+    extract_citations,
+    format_context,
     select_model,
 )
 
@@ -45,20 +45,23 @@ class TestSelectModel:
 class TestFormatContext:
     def test_format_includes_source_info(self):
         chunks = [_make_chunk(source_id="PR-42")]
-        text = _format_context(chunks)
+        text = format_context(chunks)
         assert "PR-42" in text
         assert "pr_description" in text
 
     def test_format_flags_outdated(self):
         chunks = [_make_chunk(staleness=0.8, outdated=True)]
-        text = _format_context(chunks)
+        text = format_context(chunks)
         assert "POSSIBLY OUTDATED" in text
+
+    def test_format_empty_chunks(self):
+        assert format_context([]) == ""
 
 
 class TestExtractCitations:
     def test_deduplicates_citations(self):
         chunks = [_make_chunk(source_id="PR-1"), _make_chunk(source_id="PR-1")]
-        citations = _extract_citations(chunks)
+        citations = extract_citations(chunks)
         assert len(citations) == 1
 
     def test_multiple_sources(self):
@@ -66,13 +69,13 @@ class TestExtractCitations:
             _make_chunk(source_id="PR-1"),
             _make_chunk(source_type=SourceType.TICKET, source_id="ENG-100"),
         ]
-        citations = _extract_citations(chunks)
+        citations = extract_citations(chunks)
         assert len(citations) == 2
 
 
 class TestComputeConfidence:
     def test_empty_chunks_zero(self):
-        assert _compute_confidence([]) == 0.0
+        assert compute_confidence([]) == 0.0
 
     def test_fresh_diverse_chunks_high_confidence(self):
         chunks = [
@@ -80,10 +83,10 @@ class TestComputeConfidence:
             _make_chunk(source_type=SourceType.TICKET, staleness=0.1),
             _make_chunk(source_type=SourceType.SLACK_THREAD, staleness=0.05),
         ]
-        conf = _compute_confidence(chunks)
+        conf = compute_confidence(chunks)
         assert conf > 0.5
 
     def test_stale_chunks_lower_confidence(self):
         chunks = [_make_chunk(staleness=0.9)]
-        conf = _compute_confidence(chunks)
+        conf = compute_confidence(chunks)
         assert conf < 0.5
