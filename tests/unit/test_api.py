@@ -141,6 +141,16 @@ class TestFeedbackEndpoint:
         assert len(data) == 1
         assert data[0]["rating"] == "up"
 
+    def test_feedback_default_user_id(self, client: TestClient):
+        resp = client.post("/feedback", json={
+            "query": "test default user",
+            "rating": "up",
+        })
+        assert resp.status_code == 200
+        data = client.get("/feedback").json()
+        assert len(data) == 1
+        assert data[0]["user_id"] == "anonymous"
+
 
 class TestChunksEndpoint:
     def test_chunks_initially_empty(self, client: TestClient):
@@ -214,6 +224,7 @@ class TestStatsEndpoint:
         assert data["chunks"]["total"] == 0
         assert data["queries"]["total"] == 0
         assert data["feedback"]["total"] == 0
+        assert data["feedback"]["satisfaction_rate"] is None
 
     def test_stats_with_data(self, client: TestClient):
         repo = get_chunk_repository()

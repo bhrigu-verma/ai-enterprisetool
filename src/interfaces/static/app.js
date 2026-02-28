@@ -650,9 +650,9 @@ function escapeHtml(str) {
 function formatContent(text) {
     let html = escapeHtml(text);
 
-    // Code blocks (triple backtick)
+    // Code blocks (triple backtick) — content already escaped by escapeHtml above
     html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, lang, code) => {
-        const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
+        const langLabel = lang ? `<span class="code-lang">${escapeHtml(lang)}</span>` : '';
         return `<pre class="code-block">${langLabel}<code>${code.trim()}</code></pre>`;
     });
 

@@ -285,7 +285,7 @@ async def export_audit_csv() -> StreamingResponse:
     """Export the audit trail as a CSV file."""
     entries = _audit_logger.entries
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = csv.writer(buf, quoting=csv.QUOTE_ALL)
     writer.writerow(["timestamp", "user_id", "query", "response_summary", "chunks_retrieved"])
     for e in entries:
         writer.writerow([
@@ -405,7 +405,7 @@ async def get_stats() -> dict[str, Any]:
             "total": len(feedback_entries),
             "positive": up_count,
             "negative": down_count,
-            "satisfaction_rate": round(up_count / max(1, up_count + down_count), 2),
+            "satisfaction_rate": round(up_count / (up_count + down_count), 2) if (up_count + down_count) > 0 else None,
         },
     }
 
