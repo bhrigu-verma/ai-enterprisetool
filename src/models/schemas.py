@@ -165,3 +165,13 @@ class AuditEntry(BaseModel):
     response_summary: str = ""
     chunks_retrieved: list[str] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class FeedbackEntry(BaseModel):
+    """User feedback on an answer (thumbs up/down)."""
+
+    user_id: str = Field(..., min_length=1)
+    query: str
+    rating: str = Field(..., pattern=r"^(up|down)$")
+    comment: str = ""
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

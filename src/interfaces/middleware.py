@@ -1,4 +1,4 @@
-"""FastAPI middleware — API key authentication, rate limiting, CORS, request logging."""
+"""FastAPI middleware — API key authentication, rate limiting, security headers, request logging."""
 
 from __future__ import annotations
 
@@ -17,7 +17,40 @@ from src.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 # Paths that don't require authentication
-_PUBLIC_PATHS = frozenset({"/health", "/docs", "/openapi.json", "/redoc"})
+_PUBLIC_PATHS = frozenset({
+    "/health", "/docs", "/openapi.json", "/redoc", "/", "/favicon.ico",
+})
+
+
+# ---------------------------------------------------------------------------
+# Security Headers
+# ---------------------------------------------------------------------------
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adds security headers to every response.
+
+    Includes Content-Security-Policy, X-Content-Type-Options,
+    X-Frame-Options, Referrer-Policy, and Permissions-Policy.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # CSP: allow self + inline styles/scripts for the UI
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
+        )
+        return response
 
 
 # ---------------------------------------------------------------------------
@@ -34,8 +67,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         settings = get_settings()
 
-        # Skip auth for public endpoints and webhook endpoints
-        if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/webhook/"):
+        path = request.url.path
+        # Skip auth for public endpoints, webhooks, and static assets
+        if (
+            path in _PUBLIC_PATHS
+            or path.startswith("/webhook/")
+            or path.startswith("/static/")
+        ):
             return await call_next(request)
 
         # If no keys configured, allow all (development mode)

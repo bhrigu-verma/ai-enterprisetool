@@ -1,4 +1,4 @@
-"""Tests for middleware — API key auth, rate limiting, request logging."""
+"""Tests for middleware — API key auth, rate limiting, security headers, request logging."""
 
 from __future__ import annotations
 
@@ -64,3 +64,39 @@ class TestAPIKeyMiddleware:
         finally:
             os.environ.pop("AET_API_KEYS", None)
             reset_settings()
+
+    def test_static_files_skip_auth(self, client: TestClient):
+        """Static file paths should not require API keys."""
+        os.environ["AET_API_KEYS"] = '["test-key-123"]'
+        reset_settings()
+        try:
+            resp = client.get("/static/styles.css")
+            # Should not be 401; 200 or 404 is fine depending on file existence
+            assert resp.status_code != 401
+        finally:
+            os.environ.pop("AET_API_KEYS", None)
+            reset_settings()
+
+
+class TestSecurityHeadersMiddleware:
+    def test_csp_header_present(self, client: TestClient):
+        resp = client.get("/health")
+        csp = resp.headers.get("Content-Security-Policy", "")
+        assert "default-src 'self'" in csp
+        assert "frame-ancestors 'none'" in csp
+
+    def test_xframe_options(self, client: TestClient):
+        resp = client.get("/health")
+        assert resp.headers.get("X-Frame-Options") == "DENY"
+
+    def test_nosniff(self, client: TestClient):
+        resp = client.get("/health")
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+
+    def test_referrer_policy(self, client: TestClient):
+        resp = client.get("/health")
+        assert "strict-origin" in resp.headers.get("Referrer-Policy", "")
+
+    def test_permissions_policy(self, client: TestClient):
+        resp = client.get("/health")
+        assert "camera=()" in resp.headers.get("Permissions-Policy", "")

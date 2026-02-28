@@ -1,4 +1,4 @@
-"""Tests for the security module — permissions, audit, webhook verification."""
+"""Tests for the security module — permissions, audit, feedback, webhook verification."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import pytest
 from src.models.schemas import Chunk, ChunkMetadata, SourceType
 from src.security.auth import (
     AuditLogger,
+    FeedbackStore,
     PermissionFilter,
     verify_github_signature,
     verify_slack_signature,
@@ -145,3 +146,42 @@ class TestSlackSignatureVerification:
         assert verify_slack_signature(b"x", "", "sig", "secret") is False
         assert verify_slack_signature(b"x", "123", "", "secret") is False
         assert verify_slack_signature(b"x", "123", "sig", "") is False
+
+
+class TestFeedbackStore:
+    def test_add_feedback(self):
+        store = FeedbackStore()
+        entry = store.add(user_id="u1", query="how?", rating="up")
+        assert entry.user_id == "u1"
+        assert entry.rating == "up"
+        assert len(store.entries) == 1
+
+    def test_add_feedback_with_comment(self):
+        store = FeedbackStore()
+        entry = store.add(
+            user_id="u1", query="how?", rating="down", comment="Wrong answer"
+        )
+        assert entry.comment == "Wrong answer"
+
+    def test_invalid_rating_raises(self):
+        store = FeedbackStore()
+        with pytest.raises(ValueError, match="rating must be"):
+            store.add(user_id="u1", query="q", rating="maybe")
+
+    def test_empty_user_id_raises(self):
+        store = FeedbackStore()
+        with pytest.raises(ValueError, match="user_id"):
+            store.add(user_id="", query="q", rating="up")
+
+    def test_clear(self):
+        store = FeedbackStore()
+        store.add(user_id="u1", query="q", rating="up")
+        store.clear()
+        assert len(store.entries) == 0
+
+    def test_entries_returns_copy(self):
+        store = FeedbackStore()
+        store.add(user_id="u1", query="q", rating="up")
+        entries = store.entries
+        entries.clear()
+        assert len(store.entries) == 1

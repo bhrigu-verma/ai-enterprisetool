@@ -3,21 +3,30 @@
 Production-grade features:
 - API key authentication (via middleware)
 - Rate limiting (via middleware)
+- Security headers (CSP, X-Frame-Options, etc.) via middleware
 - Request logging with correlation IDs (via middleware)
 - Thread-safe chunk repository
 - Input validation with size limits
 - Structured error responses
 - Deep health checks
 - Audit logging for compliance
+- Feedback collection on answers
+- Usage statistics and analytics
+- Chunk browsing with pagination
+- CSV audit export
 """
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,11 +38,12 @@ from src.interfaces.middleware import (
     APIKeyMiddleware,
     RateLimitMiddleware,
     RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
 )
 from src.models.repository import ChunkRepository
 from src.models.schemas import Chunk, QueryResponse, QuestionType
 from src.reasoning.engine import ReasoningEngine, compute_confidence, extract_citations
-from src.security.auth import AuditLogger, PermissionFilter
+from src.security.auth import AuditLogger, FeedbackStore, PermissionFilter
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +55,11 @@ app = FastAPI(
     title="AI Enterprise Tool",
     description="Internal developer copilot with org-wide context, "
     "temporal awareness, and large context reasoning.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # Middleware stack (order matters — outermost first)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(APIKeyMiddleware)
@@ -67,6 +78,7 @@ _chunk_repo = ChunkRepository()
 _audit_logger = AuditLogger()
 _permission_filter = PermissionFilter()
 _context_assembler = ContextAssembler()
+_feedback_store = FeedbackStore()
 
 
 def get_chunk_repository() -> ChunkRepository:
@@ -101,9 +113,16 @@ class IngestRequest(BaseModel):
     repo: str = Field(..., min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9._-]+$")
 
 
+class FeedbackRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=10_000)
+    rating: str = Field(..., pattern=r"^(up|down)$")
+    user_id: str = Field(default="anonymous", min_length=1, max_length=256)
+    comment: str = Field(default="", max_length=2000)
+
+
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     chunks_indexed: int = 0
 
 
@@ -259,6 +278,136 @@ async def github_webhook(request: Request) -> dict[str, str]:
 async def get_audit_log() -> list[dict[str, Any]]:
     """Return the audit trail."""
     return [e.model_dump(mode="json") for e in _audit_logger.entries]
+
+
+@app.get("/audit/export")
+async def export_audit_csv() -> StreamingResponse:
+    """Export the audit trail as a CSV file."""
+    entries = _audit_logger.entries
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["timestamp", "user_id", "query", "response_summary", "chunks_retrieved"])
+    for e in entries:
+        writer.writerow([
+            e.timestamp.isoformat() if e.timestamp else "",
+            e.user_id,
+            e.query,
+            e.response_summary,
+            ";".join(e.chunks_retrieved),
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=audit_log.csv"},
+    )
+
+
+@app.post("/feedback")
+async def submit_feedback(req: FeedbackRequest) -> dict[str, str]:
+    """Submit thumbs-up/down feedback on an answer."""
+    _feedback_store.add(
+        user_id=req.user_id,
+        query=req.query,
+        rating=req.rating,
+        comment=req.comment,
+    )
+    return {"status": "ok"}
+
+
+@app.get("/feedback")
+async def get_feedback() -> list[dict[str, Any]]:
+    """Return all collected feedback entries."""
+    return [e.model_dump(mode="json") for e in _feedback_store.entries]
+
+
+@app.get("/chunks")
+async def list_chunks(
+    source_type: str | None = Query(None, description="Filter by source type"),
+    repo: str | None = Query(None, description="Filter by repository"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+) -> dict[str, Any]:
+    """Browse ingested chunks with pagination and filtering."""
+    all_chunks = _chunk_repo.list_all()
+
+    if source_type:
+        all_chunks = [c for c in all_chunks if c.metadata.source_type.value == source_type]
+    if repo:
+        all_chunks = [c for c in all_chunks if c.metadata.repo == repo]
+
+    total = len(all_chunks)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_chunks = all_chunks[start:end]
+
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": max(1, (total + per_page - 1) // per_page),
+        "chunks": [
+            {
+                "id": c.id,
+                "source_type": c.metadata.source_type.value,
+                "source_id": c.metadata.source_id,
+                "repo": c.metadata.repo,
+                "author": c.metadata.author,
+                "timestamp": c.metadata.timestamp.isoformat() if c.metadata.timestamp else None,
+                "staleness_score": c.staleness_score,
+                "is_outdated": c.metadata.is_likely_outdated,
+                "content_preview": c.content[:200] + ("…" if len(c.content) > 200 else ""),
+            }
+            for c in page_chunks
+        ],
+    }
+
+
+@app.get("/stats")
+async def get_stats() -> dict[str, Any]:
+    """Return usage statistics and analytics."""
+    all_chunks = _chunk_repo.list_all()
+    audit_entries = _audit_logger.entries
+    feedback_entries = _feedback_store.entries
+
+    # Chunk stats
+    source_counts: Counter[str] = Counter()
+    repo_counts: Counter[str] = Counter()
+    outdated_count = 0
+    for c in all_chunks:
+        source_counts[c.metadata.source_type.value] += 1
+        if c.metadata.repo:
+            repo_counts[c.metadata.repo] += 1
+        if c.metadata.is_likely_outdated:
+            outdated_count += 1
+
+    # Feedback stats
+    up_count = sum(1 for f in feedback_entries if f.rating == "up")
+    down_count = sum(1 for f in feedback_entries if f.rating == "down")
+
+    # Query stats
+    user_counts: Counter[str] = Counter()
+    for e in audit_entries:
+        user_counts[e.user_id] += 1
+
+    return {
+        "chunks": {
+            "total": len(all_chunks),
+            "by_source_type": dict(source_counts),
+            "by_repo": dict(repo_counts),
+            "outdated": outdated_count,
+        },
+        "queries": {
+            "total": len(audit_entries),
+            "by_user": dict(user_counts.most_common(10)),
+        },
+        "feedback": {
+            "total": len(feedback_entries),
+            "positive": up_count,
+            "negative": down_count,
+            "satisfaction_rate": round(up_count / max(1, up_count + down_count), 2),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

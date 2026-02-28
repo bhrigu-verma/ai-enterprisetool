@@ -1,8 +1,9 @@
-"""Security utilities — permission filtering, audit logging, and webhook verification.
+"""Security utilities — permission filtering, audit logging, feedback, and webhook verification.
 
 Enterprise requirements addressed:
 - Permission filtering inherits from source access controls
 - Audit logging is append-only with timestamps for compliance
+- Feedback collection for answer quality tracking
 - Webhook verification uses constant-time comparison to prevent timing attacks
 - Slack signatures include timestamp validation to prevent replay attacks
 """
@@ -15,7 +16,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from src.models.schemas import AuditEntry, Chunk
+from src.models.schemas import AuditEntry, Chunk, FeedbackEntry
 
 logger = logging.getLogger(__name__)
 
@@ -141,3 +142,45 @@ def verify_slack_signature(
     base = f"v0:{timestamp}:{payload.decode()}"
     expected = hmac.new(secret.encode(), base.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(f"v0={expected}", signature)
+
+
+# ---------------------------------------------------------------------------
+# Feedback store
+# ---------------------------------------------------------------------------
+
+class FeedbackStore:
+    """Append-only store for user feedback on answer quality."""
+
+    def __init__(self) -> None:
+        self._entries: list[FeedbackEntry] = []
+
+    def add(
+        self,
+        *,
+        user_id: str,
+        query: str,
+        rating: str,
+        comment: str = "",
+    ) -> FeedbackEntry:
+        if not user_id:
+            raise ValueError("user_id is required for feedback")
+        if rating not in ("up", "down"):
+            raise ValueError("rating must be 'up' or 'down'")
+        entry = FeedbackEntry(
+            user_id=user_id,
+            query=query,
+            rating=rating,
+            comment=comment,
+            timestamp=datetime.now(timezone.utc),
+        )
+        self._entries.append(entry)
+        logger.info("FEEDBACK | user=%s rating=%s query=%r", user_id, rating, query[:100])
+        return entry
+
+    @property
+    def entries(self) -> list[FeedbackEntry]:
+        return list(self._entries)
+
+    def clear(self) -> None:
+        """Clear entries (for testing only)."""
+        self._entries.clear()
