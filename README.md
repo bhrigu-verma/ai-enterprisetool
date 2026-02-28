@@ -2,7 +2,9 @@
 
 Production-grade internal developer copilot with org-wide context, temporal awareness, and large context reasoning.
 
-![Web UI](https://github.com/user-attachments/assets/270dd3d6-84c8-4bd0-9a0b-88631675fe3b)
+![Web UI](https://github.com/user-attachments/assets/77aa6bb9-aeba-493d-b852-f4fed0f7a40b)
+
+> **📖 Full documentation:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)
 
 ## What It Does
 
@@ -76,7 +78,12 @@ pytest tests/
 | `POST` | `/ask` | Ask a question (supports streaming) |
 | `POST` | `/ingest/github` | Ingest a GitHub repository |
 | `POST` | `/webhook/github` | GitHub webhook receiver |
+| `GET` | `/chunks` | Browse knowledge base (paginated, filterable) |
+| `GET` | `/stats` | Usage analytics and satisfaction metrics |
+| `POST` | `/feedback` | Submit thumbs-up/down feedback |
+| `GET` | `/feedback` | Retrieve all feedback entries |
 | `GET` | `/audit` | View audit log |
+| `GET` | `/audit/export` | Export audit log as CSV |
 | `GET` | `/` | Web UI |
 
 ### Example: Ask a Question
@@ -104,19 +111,22 @@ src/
 ├── processing/       # Semantic chunking, temporal tagging, entity linker
 ├── context_assembly/ # Query classification, retrieval planning, token budgeting
 ├── reasoning/        # LLM integration, citations, confidence scoring
-├── interfaces/       # FastAPI REST API + Web UI + middleware (auth, rate limit)
-└── security/         # Permission filtering, audit logging, webhook verification
+├── interfaces/       # FastAPI REST API + Web UI (6 views) + middleware (auth, rate limit, security headers)
+└── security/         # Permission filtering, audit logging, feedback, webhook verification
 tests/
-├── unit/             # 106 unit tests covering all layers
+├── unit/             # 131 unit tests covering all layers
 └── integration/      # Integration tests (requires services)
+docs/
+└── DOCUMENTATION.md  # Comprehensive documentation
 ```
 
 ## Security
 
+- **Security headers** — Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy
 - **API key authentication** — configurable API keys via middleware; public endpoints (health, docs) skip auth
 - **Rate limiting** — per-IP sliding window rate limiter
 - **Permission filtering** — chunks carry source permissions; retrieval filters by user access
-- **Audit logging** — every query, retrieval, and response is logged with timestamps
+- **Audit logging** — every query, retrieval, and response is logged with timestamps; CSV export available
 - **Webhook verification** — GitHub (HMAC-SHA256) and Slack (with replay protection) signatures validated
 - **Input validation** — size limits, format validation, and Pydantic constraints at all boundaries
 - **Request logging** — correlation IDs for distributed tracing
