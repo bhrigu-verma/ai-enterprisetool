@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,32 +16,53 @@
                     <span class="logo-icon">🧠</span>
                     <span class="logo-text">Enterprise<br>Copilot</span>
                 </div>
+                <button class="mobile-toggle" id="mobileToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
             </div>
             <nav class="sidebar-nav">
                 <button class="nav-item active" data-view="ask" onclick="switchView('ask')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                    Ask
+                    <span>Ask</span>
                 </button>
                 <button class="nav-item" data-view="ingest" onclick="switchView('ingest')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Ingest Data
+                    <span>Ingest Data</span>
+                </button>
+                <button class="nav-item" data-view="knowledge" onclick="switchView('knowledge')">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    <span>Knowledge Base</span>
+                </button>
+                <button class="nav-item" data-view="stats" onclick="switchView('stats')">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    <span>Analytics</span>
                 </button>
                 <button class="nav-item" data-view="audit" onclick="switchView('audit')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    Audit Log
+                    <span>Audit Log</span>
                 </button>
                 <button class="nav-item" data-view="status" onclick="switchView('status')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                    System Status
+                    <span>System Status</span>
                 </button>
             </nav>
             <div class="sidebar-footer">
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                    <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
                 <div class="system-badge" id="systemBadge">
                     <span class="status-dot"></span>
                     <span>Checking...</span>
                 </div>
+                <button class="kbd-hint" onclick="showShortcuts()" title="Keyboard shortcuts">
+                    <kbd>?</kbd>
+                </button>
             </div>
         </aside>
+
+        <!-- Mobile overlay -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -80,11 +101,16 @@
                             </button>
                         </div>
                         <div class="input-footer">
-                            <label class="stream-toggle">
-                                <input type="checkbox" id="streamToggle" checked>
-                                <span class="toggle-label">Stream response</span>
-                            </label>
-                            <span class="input-hint">Press Enter to send, Shift+Enter for new line</span>
+                            <div class="input-footer-left">
+                                <label class="stream-toggle">
+                                    <input type="checkbox" id="streamToggle" checked>
+                                    <span class="toggle-label">Stream</span>
+                                </label>
+                                <button class="btn-icon" onclick="clearChat()" title="Clear chat">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                            </div>
+                            <span class="input-hint">Enter to send · Shift+Enter for new line · <kbd>Ctrl</kbd>+<kbd>K</kbd> focus</span>
                         </div>
                     </div>
                 </div>
@@ -143,6 +169,84 @@
                 </div>
             </div>
 
+            <!-- Knowledge Base View -->
+            <div class="view" id="view-knowledge">
+                <div class="view-header">
+                    <h1>Knowledge Base</h1>
+                    <p class="subtitle">Browse and search all ingested content chunks.</p>
+                </div>
+                <div class="kb-container">
+                    <div class="toolbar">
+                        <div class="toolbar-filters">
+                            <select id="kbSourceFilter" class="filter-select" onchange="refreshKnowledgeBase()">
+                                <option value="">All Sources</option>
+                                <option value="pr_description">PR Descriptions</option>
+                                <option value="pr_comment">PR Comments</option>
+                                <option value="commit">Commits</option>
+                                <option value="slack_thread">Slack Threads</option>
+                                <option value="ticket">Tickets</option>
+                                <option value="document">Documents</option>
+                                <option value="code">Code</option>
+                            </select>
+                            <input type="text" id="kbRepoFilter" placeholder="Filter by repo..." class="filter-input" onchange="refreshKnowledgeBase()">
+                        </div>
+                        <button class="btn btn-secondary" onclick="refreshKnowledgeBase()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            Refresh
+                        </button>
+                    </div>
+                    <div class="kb-summary" id="kbSummary">Loading...</div>
+                    <div class="kb-list" id="kbList"></div>
+                    <div class="kb-pagination" id="kbPagination"></div>
+                </div>
+            </div>
+
+            <!-- Analytics View -->
+            <div class="view" id="view-stats">
+                <div class="view-header">
+                    <h1>Analytics Dashboard</h1>
+                    <p class="subtitle">Monitor usage, satisfaction, and knowledge base health.</p>
+                </div>
+                <div class="stats-container" id="statsContainer">
+                    <div class="stats-grid" id="statsGrid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="statTotalChunks">—</div>
+                            <div class="stat-label">Total Chunks</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statTotalQueries">—</div>
+                            <div class="stat-label">Total Queries</div>
+                        </div>
+                        <div class="stat-card accent">
+                            <div class="stat-value" id="statSatisfaction">—</div>
+                            <div class="stat-label">Satisfaction Rate</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statOutdated">—</div>
+                            <div class="stat-label">Outdated Chunks</div>
+                        </div>
+                    </div>
+                    <div class="stats-details">
+                        <div class="stats-section">
+                            <h3>Chunks by Source Type</h3>
+                            <div id="statsBySource" class="stats-breakdown">—</div>
+                        </div>
+                        <div class="stats-section">
+                            <h3>Chunks by Repository</h3>
+                            <div id="statsByRepo" class="stats-breakdown">—</div>
+                        </div>
+                        <div class="stats-section">
+                            <h3>Top Querying Users</h3>
+                            <div id="statsByUser" class="stats-breakdown">—</div>
+                        </div>
+                        <div class="stats-section">
+                            <h3>Feedback Summary</h3>
+                            <div id="statsFeedback" class="stats-breakdown">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Audit View -->
             <div class="view" id="view-audit">
                 <div class="view-header">
@@ -151,10 +255,17 @@
                 </div>
                 <div class="audit-container">
                     <div class="toolbar">
-                        <button class="btn btn-secondary" onclick="refreshAudit()">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                            Refresh
-                        </button>
+                        <input type="text" id="auditSearch" placeholder="Search queries..." class="filter-input" oninput="filterAuditLog()">
+                        <div class="toolbar-actions">
+                            <button class="btn btn-secondary" onclick="exportAuditCSV()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Export CSV
+                            </button>
+                            <button class="btn btn-secondary" onclick="refreshAudit()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                Refresh
+                            </button>
+                        </div>
                     </div>
                     <div class="table-wrapper">
                         <table class="audit-table">
@@ -214,6 +325,27 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="modal-overlay" id="shortcutsModal" onclick="if(event.target===this)hideShortcuts()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Keyboard Shortcuts</h2>
+                <button class="modal-close" onclick="hideShortcuts()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="shortcut-row"><kbd>Ctrl</kbd> + <kbd>K</kbd><span>Focus search / ask input</span></div>
+                <div class="shortcut-row"><kbd>?</kbd><span>Show this help panel</span></div>
+                <div class="shortcut-row"><kbd>Escape</kbd><span>Close modals</span></div>
+                <div class="shortcut-row"><kbd>1</kbd> – <kbd>6</kbd><span>Switch views (when not typing)</span></div>
+                <div class="shortcut-row"><kbd>Enter</kbd><span>Send message</span></div>
+                <div class="shortcut-row"><kbd>Shift</kbd> + <kbd>Enter</kbd><span>New line in input</span></div>
+            </div>
+        </div>
     </div>
 
     <script src="/static/app.js"></script>

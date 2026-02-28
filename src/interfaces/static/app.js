@@ -238,11 +238,26 @@ async function sendFeedback(btn, rating) {
     buttons.forEach(b => b.disabled = true);
     btn.classList.add('active');
 
+    // Find the query text from the nearest preceding user message
+    const msgEl = btn.closest('.message');
+    let query = '';
+    let prev = msgEl ? msgEl.previousElementSibling : null;
+    while (prev) {
+        if (prev.classList.contains('message-user')) {
+            const bubble = prev.querySelector('.message-bubble');
+            if (bubble) query = bubble.textContent;
+            break;
+        }
+        prev = prev.previousElementSibling;
+    }
+
+    const apiRating = rating === 'positive' ? 'up' : 'down';
+
     try {
         await fetch(`${API_BASE}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rating }),
+            body: JSON.stringify({ query: query || 'unknown', rating: apiRating }),
         });
         showToast(rating === 'positive' ? 'Thanks for the feedback!' : 'Thanks — we\'ll improve.', 'success');
     } catch (_err) {
@@ -452,10 +467,10 @@ async function refreshKnowledgeBase(page) {
                     <span class="kb-source-badge">${escapeHtml(c.source_type || 'unknown')}</span>
                     <span class="kb-repo">${escapeHtml(c.repo || c.source_id || '')}</span>
                 </div>
-                <div class="kb-card-content">${escapeHtml(truncate(c.content || c.text || '', 300))}</div>
+                <div class="kb-card-content">${escapeHtml(c.content_preview || c.content || c.text || '')}</div>
                 <div class="kb-card-footer">
-                    <span class="kb-card-id">${escapeHtml(c.chunk_id || c.id || '')}</span>
-                    <span class="kb-card-date">${formatTimestamp(c.created_at || c.indexed_at)}</span>
+                    <span class="kb-card-id">${escapeHtml(c.id || c.chunk_id || '')}</span>
+                    <span class="kb-card-date">${formatTimestamp(c.timestamp || c.created_at)}</span>
                 </div>
             </div>
         `).join('');
@@ -485,18 +500,22 @@ async function refreshStats() {
         const resp = await fetch(`${API_BASE}/stats`);
         const data = await resp.json();
 
-        document.getElementById('statTotalChunks').textContent = data.total_chunks ?? '—';
-        document.getElementById('statTotalQueries').textContent = data.total_queries ?? '—';
-        document.getElementById('statOutdated').textContent = data.outdated_chunks ?? '—';
+        const chunks = data.chunks || {};
+        const queries = data.queries || {};
+        const feedback = data.feedback || {};
 
-        const sat = data.satisfaction_rate;
+        document.getElementById('statTotalChunks').textContent = chunks.total ?? '—';
+        document.getElementById('statTotalQueries').textContent = queries.total ?? '—';
+        document.getElementById('statOutdated').textContent = chunks.outdated ?? '—';
+
+        const sat = feedback.satisfaction_rate;
         document.getElementById('statSatisfaction').textContent =
             sat !== undefined && sat !== null ? `${Math.round(sat * 100)}%` : '—';
 
-        renderBreakdown('statsBySource', data.by_source_type || data.chunks_by_source);
-        renderBreakdown('statsByRepo', data.by_repo || data.chunks_by_repo);
-        renderBreakdown('statsByUser', data.by_user || data.queries_by_user);
-        renderFeedbackBreakdown('statsFeedback', data.feedback || data.feedback_summary);
+        renderBreakdown('statsBySource', chunks.by_source_type);
+        renderBreakdown('statsByRepo', chunks.by_repo);
+        renderBreakdown('statsByUser', queries.by_user);
+        renderFeedbackBreakdown('statsFeedback', feedback);
     } catch (err) {
         document.getElementById('statTotalChunks').textContent = '—';
         document.getElementById('statTotalQueries').textContent = '—';
@@ -648,18 +667,12 @@ function formatContent(text) {
     // Inline code (after code blocks to avoid conflicts)
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-    // Bullet lists
+    // Bullet lists (process before line breaks)
     html = html.replace(/^[•\-\*] (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>(\n|$))+/g, (match) => `<ul>${match}</ul>`);
+    html = html.replace(/((<li>.*<\/li>\n?)+)/g, (match) => `<ul>${match.replace(/\n/g, '')}</ul>`);
 
     // Line breaks (but not inside pre/ul blocks already handled)
     html = html.replace(/\n/g, '<br>');
-
-    // Clean up extra <br> inside block elements
-    html = html.replace(/<br><\/ul>/g, '</ul>');
-    html = html.replace(/<ul><br>/g, '<ul>');
-    html = html.replace(/<br><li>/g, '<li>');
-    html = html.replace(/<\/li><br>/g, '</li>');
 
     return html;
 }
