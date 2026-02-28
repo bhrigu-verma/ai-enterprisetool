@@ -48,7 +48,11 @@ class TemporalTagger:
         supersede_weight: float = _DEFAULT_SUPERSEDE_WEIGHT,
         outdated_threshold: float = _OUTDATED_THRESHOLD,
     ) -> None:
-        self._threshold = threshold_days if threshold_days is not None else get_settings().staleness_threshold_days
+        self._threshold = (
+            threshold_days
+            if threshold_days is not None
+            else get_settings().staleness_threshold_days
+        )
         self._age_w = age_weight
         self._churn_w = churn_weight
         self._supersede_w = supersede_weight

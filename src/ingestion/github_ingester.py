@@ -183,7 +183,15 @@ class GitHubIngester:
     # Internal HTTP helpers
     # ------------------------------------------------------------------
 
-    @retry_async(max_attempts=3, base_delay=2.0, retryable_exceptions=(httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException))
+    @retry_async(
+        max_attempts=3,
+        base_delay=2.0,
+        retryable_exceptions=(
+            httpx.HTTPStatusError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+        ),
+    )
     async def _get_json(
         self, url: str, *, params: dict[str, Any] | None = None
     ) -> Any:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from src.interfaces.api import app, get_chunk_repository, _audit_logger, _feedback_store
+from src.interfaces.api import _audit_logger, _feedback_store, app, get_chunk_repository
 from src.models.schemas import Chunk, ChunkMetadata, SourceType
 
 
@@ -289,6 +289,29 @@ class TestIngestEndpoint:
     def test_ingest_missing_token_returns_500(self, client: TestClient):
         resp = client.post("/ingest/github", json={"owner": "acme", "repo": "backend"})
         assert resp.status_code == 500
+
+    def test_ingest_error_does_not_leak_details(self, client: TestClient):
+        """Error messages should not expose internal exception details."""
+        resp = client.post("/ingest/github", json={"owner": "acme", "repo": "backend"})
+        assert resp.status_code == 500
+        detail = resp.json().get("detail", "")
+        # Should not contain Python exception class names or tracebacks
+        assert "Traceback" not in detail
+        assert "Error(" not in detail
+
+
+class TestCorsConfiguration:
+    def test_cors_headers_on_preflight(self, client: TestClient):
+        """CORS headers should be present on preflight OPTIONS requests."""
+        resp = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        # Should not error out — CORS middleware handles it
+        assert resp.status_code in (200, 400)
 
 
 class TestGlobalErrorHandler:

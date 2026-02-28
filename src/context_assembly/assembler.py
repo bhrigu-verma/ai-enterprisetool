@@ -183,5 +183,8 @@ class ContextAssembler:
                 break
             selected.append(chunk)
             used += tokens
-        logger.debug("Assembled %d chunks using %d tokens (budget: %d)", len(selected), used, self._token_budget)
+        logger.debug(
+            "Assembled %d chunks using %d tokens (budget: %d)",
+            len(selected), used, self._token_budget,
+        )
         return selected

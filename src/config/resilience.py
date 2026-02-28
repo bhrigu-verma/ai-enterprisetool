@@ -20,7 +20,7 @@ T = TypeVar("T")
 _TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
-class RetryExhausted(Exception):
+class RetryExhaustedError(Exception):
     """All retry attempts have been exhausted."""
 
     def __init__(self, attempts: int, last_exception: Exception) -> None:
@@ -79,7 +79,7 @@ def retry_async(
                         exc,
                     )
                     await asyncio.sleep(delay)
-            raise RetryExhausted(max_attempts, last_exc)  # type: ignore[arg-type]
+            raise RetryExhaustedError(max_attempts, last_exc)  # type: ignore[arg-type]
 
         return wrapper
 

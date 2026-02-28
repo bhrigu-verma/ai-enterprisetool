@@ -8,7 +8,9 @@ from src.models.repository import ChunkRepository
 from src.models.schemas import Chunk, ChunkMetadata, SourceType
 
 
-def _make_chunk(chunk_id: str = "c1", repo: str = "", permissions: list[str] | None = None) -> Chunk:
+def _make_chunk(
+    chunk_id: str = "c1", repo: str = "", permissions: list[str] | None = None,
+) -> Chunk:
     return Chunk(
         id=chunk_id,
         content="test content",

@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 60
     rate_limit_burst: int = 10
 
+    # --- CORS ---
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: ["*"],
+    )
+
     # --- Request Limits ---
     max_query_length: int = 10_000
     max_ingest_batch_size: int = 100

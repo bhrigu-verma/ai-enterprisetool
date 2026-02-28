@@ -100,3 +100,16 @@ class TestSecurityHeadersMiddleware:
     def test_permissions_policy(self, client: TestClient):
         resp = client.get("/health")
         assert "camera=()" in resp.headers.get("Permissions-Policy", "")
+
+
+class TestRateLimiterCleanup:
+    def test_stale_keys_are_pruned(self):
+        """Rate limiter should clean up stale IP entries to prevent memory leak."""
+        from src.interfaces.middleware import _RateLimitBucket
+
+        bucket = _RateLimitBucket(max_requests=100, window_seconds=1)
+        # Fill with many unique keys
+        for i in range(10_001):
+            bucket.is_allowed(f"ip-{i}")
+        # After exceeding 10k keys, stale entries should be cleaned
+        assert len(bucket._requests) <= 10_001

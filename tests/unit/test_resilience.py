@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.config.resilience import RetryExhausted, is_retryable_http_status, retry_async
+from src.config.resilience import RetryExhaustedError, is_retryable_http_status, retry_async
 
 
 class TestRetryAsync:
@@ -44,7 +44,7 @@ class TestRetryAsync:
         async def _fn():
             raise ValueError("always fails")
 
-        with pytest.raises(RetryExhausted) as exc_info:
+        with pytest.raises(RetryExhaustedError) as exc_info:
             await _fn()
         assert exc_info.value.attempts == 2
         assert isinstance(exc_info.value.last_exception, ValueError)

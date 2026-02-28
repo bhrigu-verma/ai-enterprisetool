@@ -22,7 +22,6 @@ import csv
 import io
 import logging
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +41,7 @@ from src.interfaces.middleware import (
 )
 from src.models.repository import ChunkRepository
 from src.models.schemas import Chunk, QueryResponse, QuestionType
-from src.reasoning.engine import ReasoningEngine, compute_confidence, extract_citations
+from src.reasoning.engine import ReasoningEngine
 from src.security.auth import AuditLogger, FeedbackStore, PermissionFilter
 
 logger = logging.getLogger(__name__)
@@ -65,9 +64,9 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(APIKeyMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production via config
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=get_settings().cors_allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-API-Key", "X-Correlation-ID"],
 )
 
 # ---------------------------------------------------------------------------
@@ -213,7 +212,7 @@ async def ingest_github(req: IngestRequest) -> dict[str, Any]:
         logger.exception("GitHub ingestion failed for %s/%s", req.owner, req.repo)
         raise HTTPException(
             status_code=502,
-            detail=f"GitHub API error: {exc}",
+            detail="GitHub API error during ingestion. Please try again.",
         ) from exc
 
     chunker = SemanticChunker()
@@ -405,7 +404,11 @@ async def get_stats() -> dict[str, Any]:
             "total": len(feedback_entries),
             "positive": up_count,
             "negative": down_count,
-            "satisfaction_rate": round(up_count / (up_count + down_count), 2) if (up_count + down_count) > 0 else None,
+            "satisfaction_rate": (
+                round(up_count / (up_count + down_count), 2)
+                if (up_count + down_count) > 0
+                else None
+            ),
         },
     }
 

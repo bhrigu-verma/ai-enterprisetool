@@ -236,6 +236,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 | `AET_STALENESS_THRESHOLD_DAYS` | `540` | Days after which content is considered potentially stale |
 | `AET_RATE_LIMIT_PER_MINUTE` | `60` | Maximum requests per IP per minute |
 | `AET_RATE_LIMIT_BURST` | `10` | Burst rate limit |
+| `AET_CORS_ALLOWED_ORIGINS` | `["*"]` | JSON array of allowed CORS origins. Restrict in production. |
 | `AET_MAX_QUERY_LENGTH` | `10000` | Maximum characters per query |
 | `AET_MAX_INGEST_BATCH_SIZE` | `100` | Maximum items per ingestion batch |
 
@@ -1041,7 +1042,7 @@ You've configured `AET_API_KEYS` but aren't sending the key in requests. Either:
 The UI couldn't reach the `/health` endpoint. Check:
 - Is the server running?
 - Is it on the expected port?
-- Are there CORS issues? (The default config allows all origins)
+- Are there CORS issues? (Set `AET_CORS_ALLOWED_ORIGINS` to include your frontend origin)
 
 **Q: Chunks are marked as "likely outdated" but the content is current**
 

@@ -112,12 +112,22 @@ class _RateLimitBucket:
         now = time.monotonic()
         with self._lock:
             timestamps = self._requests[key]
-            # Prune old entries
+            # Prune old entries for this key
             cutoff = now - self._window
             self._requests[key] = [t for t in timestamps if t > cutoff]
             if len(self._requests[key]) >= self._max:
                 return False
             self._requests[key].append(now)
+
+            # Periodic cleanup: remove stale IP keys to prevent memory leak
+            if len(self._requests) > 10_000:
+                stale_keys = [
+                    k for k, v in self._requests.items()
+                    if not v or v[-1] < cutoff
+                ]
+                for k in stale_keys:
+                    del self._requests[k]
+
             return True
 
     def reset(self) -> None:

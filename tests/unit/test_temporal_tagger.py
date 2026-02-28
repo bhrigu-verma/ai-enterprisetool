@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from src.models.schemas import Chunk, ChunkMetadata, SourceType
 from src.processing.temporal_tagger import TemporalTagger
 
